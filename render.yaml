@@ -2,7 +2,7 @@ services:
   - type: web
     name: order-to-cash-mcp
     runtime: docker
-    dockerfilePath: ./mcp-server/Dockerfile
+    dockerfilePath: Dockerfile
     dockerContext: ./mcp-server
     plan: free
     healthCheckPath: /health
