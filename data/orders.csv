@@ -1,0 +1,6 @@
+order_id,client_name,product,quantity,order_value,status,reason,created_at
+1,Acme Traders,Wireless Mouse,50,25000,approved,,2026-07-17T09:54:24
+2,Blue Horizon Pvt Ltd,Laptop Stand,20,180000,pending_credit_review,Credit limit exceeded (Requested: ₹180000 | Available credit: ₹10000),2026-07-17T09:57:57
+3,Zenith Corp,USB-C Hub,100,60000,pending_inventory,Insufficient stock (Requested: 100 | Available: 30),2026-07-17T14:52:22
+4,Cipla Regional Depot,Paracetamol 500mg tablets,20,10000,pending_credit_and_inventory,Client & product not in system,2026-07-21T15:25:10
+5,MedPlus Health Services,Insulin Glargine Injection,20,40000,pending_credit_and_inventory,Client & product not in system,2026-07-21T15:05:56

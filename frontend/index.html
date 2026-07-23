@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Order-to-Cash Demo Viewer</title>
+<style>
+  :root {
+    --bg: #f7f8fa;
+    --card-bg: #ffffff;
+    --border: #e2e5ea;
+    --text: #1f2430;
+    --muted: #6b7280;
+    --green: #16a34a;
+    --green-bg: #dcfce7;
+    --yellow: #a16207;
+    --yellow-bg: #fef9c3;
+    --red: #dc2626;
+    --red-bg: #fee2e2;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    margin: 0;
+    padding: 24px;
+  }
+  h1 {
+    font-size: 20px;
+    margin: 0 0 4px;
+  }
+  .subtitle {
+    color: var(--muted);
+    font-size: 13px;
+    margin-bottom: 20px;
+  }
+  .toolbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+  button {
+    background: #111827;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+  }
+  button:hover { background: #1f2937; }
+  .last-updated {
+    color: var(--muted);
+    font-size: 12px;
+  }
+  section {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px 20px;
+    margin-bottom: 20px;
+  }
+  section h2 {
+    font-size: 15px;
+    margin: 0 0 12px;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  th, td {
+    text-align: left;
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--border);
+  }
+  th {
+    color: var(--muted);
+    font-weight: 600;
+    font-size: 12px;
+    text-transform: uppercase;
+  }
+  .badge {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+  }
+  .badge.approved { background: var(--green-bg); color: var(--green); }
+  .badge.pending { background: var(--yellow-bg); color: var(--yellow); }
+  .badge.other { background: #e5e7eb; color: #374151; }
+  .progress-wrap {
+    background: #e5e7eb;
+    border-radius: 999px;
+    height: 8px;
+    width: 140px;
+    overflow: hidden;
+  }
+  .progress-bar {
+    height: 100%;
+    background: var(--green);
+  }
+  .progress-bar.high { background: var(--red); }
+  .progress-bar.mid { background: #d97706; }
+  .stock-low {
+    color: var(--red);
+    font-weight: 700;
+  }
+  .empty {
+    color: var(--muted);
+    font-size: 13px;
+    padding: 8px 0;
+  }
+</style>
+</head>
+<body>
+  <h1>Order-to-Cash Demo Viewer</h1>
+  <div class="subtitle">Live read-only view of data written by Claude Cowork. See README for details.</div>
+
+  <div class="toolbar">
+    <button id="refreshBtn">Refresh</button>
+    <span class="last-updated" id="lastUpdated"></span>
+  </div>
+
+  <section>
+    <h2>Orders</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Order ID</th>
+          <th>Client</th>
+          <th>Product</th>
+          <th>Qty</th>
+          <th>Value</th>
+          <th>Status</th>
+          <th>Reason</th>
+          <th>Created At</th>
+        </tr>
+      </thead>
+      <tbody id="ordersBody"></tbody>
+    </table>
+    <div class="empty" id="ordersEmpty" style="display:none;">No orders yet.</div>
+  </section>
+
+  <section>
+    <h2>Clients</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Credit Limit</th>
+          <th>Credit Used</th>
+          <th>Utilization</th>
+        </tr>
+      </thead>
+      <tbody id="clientsBody"></tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>Inventory</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Product</th>
+          <th>Available Stock</th>
+        </tr>
+      </thead>
+      <tbody id="inventoryBody"></tbody>
+    </table>
+  </section>
+
+  <script>
+    const API_BASE = "http://localhost:8001";
+    const LOW_STOCK_THRESHOLD = 40;
+    const AUTO_REFRESH_MS = 10000;
+
+    function badgeClass(status) {
+      if (!status) return "other";
+      const s = status.toLowerCase();
+      if (s === "approved") return "approved";
+      if (s.startsWith("pending")) return "pending";
+      return "other";
+    }
+
+    function utilizationClass(pct) {
+      if (pct >= 90) return "high";
+      if (pct >= 60) return "mid";
+      return "";
+    }
+
+    async function fetchJson(path) {
+      const res = await fetch(API_BASE + path);
+      if (!res.ok) throw new Error(`${path} failed: ${res.status}`);
+      return res.json();
+    }
+
+    function renderOrders(orders) {
+      const body = document.getElementById("ordersBody");
+      const empty = document.getElementById("ordersEmpty");
+      body.innerHTML = "";
+      if (!orders.length) {
+        empty.style.display = "block";
+        return;
+      }
+      empty.style.display = "none";
+      for (const o of orders) {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${o.order_id ?? ""}</td>
+          <td>${o.client_name ?? ""}</td>
+          <td>${o.product ?? ""}</td>
+          <td>${o.quantity ?? ""}</td>
+          <td>${o.order_value ?? ""}</td>
+          <td><span class="badge ${badgeClass(o.status)}">${o.status ?? ""}</span></td>
+          <td>${o.reason ?? ""}</td>
+          <td>${o.created_at ?? ""}</td>
+        `;
+        body.appendChild(tr);
+      }
+    }
+
+    function renderClients(clients) {
+      const body = document.getElementById("clientsBody");
+      body.innerHTML = "";
+      for (const c of clients) {
+        const limit = parseFloat(c.credit_limit) || 0;
+        const used = parseFloat(c.credit_used) || 0;
+        const pct = limit > 0 ? Math.min(100, (used / limit) * 100) : 0;
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${c.client_name ?? ""}</td>
+          <td>${c.credit_limit ?? ""}</td>
+          <td>${c.credit_used ?? ""}</td>
+          <td>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <div class="progress-wrap">
+                <div class="progress-bar ${utilizationClass(pct)}" style="width:${pct}%;"></div>
+              </div>
+              <span>${pct.toFixed(0)}%</span>
+            </div>
+          </td>
+        `;
+        body.appendChild(tr);
+      }
+    }
+
+    function renderInventory(inventory) {
+      const body = document.getElementById("inventoryBody");
+      body.innerHTML = "";
+      for (const i of inventory) {
+        const stock = parseFloat(i.available_stock) || 0;
+        const low = stock < LOW_STOCK_THRESHOLD;
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${i.product_name ?? ""}</td>
+          <td class="${low ? "stock-low" : ""}">${i.available_stock ?? ""}</td>
+        `;
+        body.appendChild(tr);
+      }
+    }
+
+    async function refreshAll() {
+      try {
+        const [orders, clients, inventory] = await Promise.all([
+          fetchJson("/orders"),
+          fetchJson("/clients"),
+          fetchJson("/inventory"),
+        ]);
+        renderOrders(orders);
+        renderClients(clients);
+        renderInventory(inventory);
+        document.getElementById("lastUpdated").textContent =
+          "Last updated: " + new Date().toLocaleTimeString();
+      } catch (err) {
+        document.getElementById("lastUpdated").textContent =
+          "Error fetching data: " + err.message;
+      }
+    }
+
+    document.getElementById("refreshBtn").addEventListener("click", refreshAll);
+
+    refreshAll();
+    setInterval(refreshAll, AUTO_REFRESH_MS);
+  </script>
+</body>
+</html>
