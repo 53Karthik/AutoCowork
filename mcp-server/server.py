@@ -33,7 +33,14 @@ VALID_STATUSES = {
 # runs the MCP session manager) and does not invoke a `lifespan=` passed into
 # the FastMCP constructor for this transport, so the DB pool is opened/closed
 # explicitly around uvicorn's serve loop below instead of via ASGI lifespan.
-mcp = FastMCP("order-to-cash-mcp")
+#
+# host="0.0.0.0" also matters beyond just matching the real bind address:
+# FastMCP auto-enables a localhost-only DNS-rebinding Host-header check when
+# host defaults to "127.0.0.1", which would reject every request once this is
+# actually reachable at a real hostname (e.g. Render). X-API-Key is our real
+# access control here, so this is left disabled rather than allowlisting the
+# specific public hostname.
+mcp = FastMCP("order-to-cash-mcp", host="0.0.0.0")
 
 
 @mcp.tool()
