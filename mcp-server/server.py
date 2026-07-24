@@ -211,9 +211,48 @@ async def health(request: Request) -> JSONResponse:
     return JSONResponse({"status": "ok"})
 
 
+# Plain read-only REST routes for the dashboard viewer (backend/, a separate
+# component). These are NOT registered as MCP tools -- Cowork/any MCP client
+# never sees or calls them -- they exist only so the dashboard can show full
+# table contents, which the MCP tools deliberately never return. Covered by
+# the same APIKeyMiddleware as everything else here (added below).
+async def get_clients(request: Request) -> JSONResponse:
+    async with pool.connection() as conn:
+        cur = await conn.execute("SELECT client_name, credit_limit, credit_used FROM clients")
+        rows = await cur.fetchall()
+    return JSONResponse([{**r, "credit_limit": float(r["credit_limit"]), "credit_used": float(r["credit_used"])} for r in rows])
+
+
+async def get_inventory(request: Request) -> JSONResponse:
+    async with pool.connection() as conn:
+        cur = await conn.execute("SELECT product_name, available_stock FROM inventory")
+        rows = await cur.fetchall()
+    return JSONResponse(rows)
+
+
+async def get_orders(request: Request) -> JSONResponse:
+    async with pool.connection() as conn:
+        cur = await conn.execute(
+            """
+            SELECT order_id, client_name, product, quantity, order_value, status, reason, created_at
+            FROM orders
+            ORDER BY created_at DESC
+            """
+        )
+        rows = await cur.fetchall()
+    orders = [
+        {**r, "order_value": float(r["order_value"]), "created_at": r["created_at"].isoformat() if r["created_at"] else None}
+        for r in rows
+    ]
+    return JSONResponse(orders)
+
+
 app = mcp.streamable_http_app()
 app.add_middleware(APIKeyMiddleware)
 app.add_route("/health", health, methods=["GET"])
+app.add_route("/clients", get_clients, methods=["GET"])
+app.add_route("/inventory", get_inventory, methods=["GET"])
+app.add_route("/orders", get_orders, methods=["GET"])
 
 
 async def run() -> None:

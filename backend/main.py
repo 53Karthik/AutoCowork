@@ -1,10 +1,19 @@
-import csv
-from pathlib import Path
+import os
 
-from fastapi import FastAPI
+import httpx
+from dotenv import load_dotenv
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
-DATA_DIR = Path(__file__).resolve().parent.parent / "data"
+load_dotenv()
+
+REMOTE_URL = os.environ.get("REMOTE_URL")
+if not REMOTE_URL:
+    raise RuntimeError("REMOTE_URL environment variable is not set")
+
+REMOTE_API_KEY = os.environ.get("REMOTE_API_KEY")
+if not REMOTE_API_KEY:
+    raise RuntimeError("REMOTE_API_KEY environment variable is not set")
 
 app = FastAPI(title="Order-to-Cash Demo Viewer")
 
@@ -16,24 +25,24 @@ app.add_middleware(
 )
 
 
-def read_csv(filename: str) -> list[dict]:
-    path = DATA_DIR / filename
-    with open(path, newline="", encoding="utf-8") as f:
-        return list(csv.DictReader(f))
+async def fetch_remote(path: str):
+    async with httpx.AsyncClient(timeout=30) as client:
+        res = await client.get(f"{REMOTE_URL}{path}", headers={"X-API-Key": REMOTE_API_KEY})
+    if not res.is_success:
+        raise HTTPException(status_code=502, detail=f"Remote server returned {res.status_code} for {path}")
+    return res.json()
 
 
 @app.get("/clients")
-def get_clients():
-    return read_csv("clients.csv")
+async def get_clients():
+    return await fetch_remote("/clients")
 
 
 @app.get("/inventory")
-def get_inventory():
-    return read_csv("inventory.csv")
+async def get_inventory():
+    return await fetch_remote("/inventory")
 
 
 @app.get("/orders")
-def get_orders():
-    orders = read_csv("orders.csv")
-    orders.sort(key=lambda o: o.get("created_at", ""), reverse=True)
-    return orders
+async def get_orders():
+    return await fetch_remote("/orders")
